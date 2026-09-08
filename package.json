@@ -1,0 +1,15 @@
+{
+  "name": "factura-bot",
+  "version": "1.0.0",
+  "description": "Bot de WhatsApp que registra facturas (foto o PDF) automáticamente en Google Sheets usando IA",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "axios": "^1.7.7",
+    "dotenv": "^16.4.5",
+    "googleapis": "^140.0.1"
+  }
+}

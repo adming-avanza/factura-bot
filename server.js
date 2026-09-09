@@ -83,11 +83,13 @@ app.post('/webhook', async (req, res) => {
     // Paso 4: confirmar al usuario
     const resumen =
       `✅ Factura registrada:\n` +
-      `📅 Fecha: ${datos.fecha}\n` +
       `🏢 Proveedor: ${datos.proveedor}\n` +
       `🧾 N° factura: ${datos.numero_factura}\n` +
-      `💰 Monto total: ${datos.moneda} ${datos.monto_total}\n` +
-      `📊 Impuesto: ${datos.impuesto}`;
+      `📅 Fecha: ${datos.fecha_factura}\n` +
+      `💰 Subtotal: ${datos.subtotal}\n` +
+      `📊 ITBMS: ${datos.itbms}\n` +
+      `💵 Total: ${datos.total}\n` +
+      `🏷️ Categoría: ${datos.categoria}`;
 
     await enviarMensajeWhatsApp(fromNumber, resumen);
   } catch (error) {
@@ -139,13 +141,16 @@ async function extraerDatosFactura(buffer, mimeType) {
   const prompt = `Esta es una factura o recibo. Extrae los siguientes datos y responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown, sin backticks:
 
 {
-  "fecha": "fecha de la factura en formato DD/MM/AAAA, o 'N/A' si no se ve",
   "proveedor": "nombre del negocio o proveedor que emite la factura",
+  "ruc_cedula": "RUC o cédula del proveedor, o 'N/A' si no aparece",
   "numero_factura": "número o folio de la factura, o 'N/A'",
-  "monto_total": "monto total como número, sin símbolo de moneda (ej: 125.50)",
-  "moneda": "código de moneda, ej: USD, PAB, MXN. Si no es claro, usa USD",
-  "impuesto": "monto de impuesto (IVA/ITBMS) como número, o 'N/A' si no aparece",
-  "categoria": "una categoría breve inferida del tipo de gasto, ej: Alimentación, Transporte, Servicios, Oficina, Otro"
+  "fecha_factura": "fecha de la factura en formato DD/MM/AAAA, o 'N/A' si no se ve",
+  "descripcion": "breve descripción de lo comprado o el servicio (máximo 8 palabras)",
+  "subtotal": "monto antes de impuestos, como número sin símbolo de moneda (ej: 100.00). Si no aparece por separado, usa el mismo valor que el total",
+  "itbms": "monto del impuesto (ITBMS/IVA) como número, o 0 si no aparece",
+  "total": "monto total final como número, sin símbolo de moneda (ej: 107.00)",
+  "metodo_pago": "método de pago si es visible en la factura (ej: Efectivo, Transferencia, Tarjeta, Yappy), o 'N/A' si no se indica",
+  "categoria": "una categoría breve inferida del tipo de gasto, ej: Alimentación, Transporte, Servicios, Suministros, Oficina, Otro"
 }`;
 
   const response = await axios.post(
@@ -193,20 +198,25 @@ async function guardarEnGoogleSheets(datos, remitente) {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: 'Facturas!A:I',
+    range: 'Facturas!A:N',
     valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: [
         [
-          new Date().toLocaleString('es-PA'), // fecha de registro
-          datos.fecha,
-          datos.proveedor,
-          datos.numero_factura,
-          datos.monto_total,
-          datos.moneda,
-          datos.impuesto,
-          datos.categoria,
-          remitente,
+          new Date().toLocaleDateString('es-PA'), // A: Fecha recepción
+          datos.proveedor, // B: Proveedor
+          datos.ruc_cedula, // C: RUC/Cédula
+          datos.numero_factura, // D: N.° factura
+          datos.fecha_factura, // E: Fecha factura
+          datos.descripcion, // F: Descripción
+          datos.subtotal, // G: Subtotal
+          datos.itbms, // H: ITBMS
+          datos.total, // I: Total
+          datos.metodo_pago, // J: Método de pago
+          datos.categoria, // K: Categoría
+          'Pendiente', // L: Estado
+          'WhatsApp', // M: Archivo/WhatsApp
+          `Registrado por ${remitente}`, // N: Observaciones
         ],
       ],
     },
@@ -249,12 +259,15 @@ app.get('/', (req, res) => {
 app.get('/test-sheets', async (req, res) => {
   try {
     const datosDePrueba = {
-      fecha: new Date().toLocaleDateString('es-PA'),
       proveedor: 'Proveedor de Prueba',
+      ruc_cedula: '0000-0000-000000',
       numero_factura: 'TEST-001',
-      monto_total: '99.99',
-      moneda: 'USD',
-      impuesto: '7.00',
+      fecha_factura: new Date().toLocaleDateString('es-PA'),
+      descripcion: 'Prueba de conexión del bot',
+      subtotal: '93.00',
+      itbms: '6.99',
+      total: '99.99',
+      metodo_pago: 'N/A',
       categoria: 'Prueba',
     };
 

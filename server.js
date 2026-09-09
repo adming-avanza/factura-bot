@@ -239,6 +239,40 @@ app.get('/', (req, res) => {
   res.send('Factura-bot está funcionando ✅');
 });
 
+// ------------------------------------------------------------
+// RUTA TEMPORAL DE PRUEBA
+// Visita https://TU-URL-DE-RENDER.onrender.com/test-sheets
+// en el navegador para verificar que el bot puede escribir
+// en tu Google Sheet, sin necesitar WhatsApp todavía.
+// (Puedes borrar esta ruta más adelante, no es obligatoria)
+// ------------------------------------------------------------
+app.get('/test-sheets', async (req, res) => {
+  try {
+    const datosDePrueba = {
+      fecha: new Date().toLocaleDateString('es-PA'),
+      proveedor: 'Proveedor de Prueba',
+      numero_factura: 'TEST-001',
+      monto_total: '99.99',
+      moneda: 'USD',
+      impuesto: '7.00',
+      categoria: 'Prueba',
+    };
+
+    await guardarEnGoogleSheets(datosDePrueba, 'test-manual');
+
+    res.send(
+      '✅ ¡Funcionó! Se agregó una fila de prueba a tu Google Sheet. Ve a revisarla, y si la ves, todo está bien conectado. (Puedes borrar esa fila de prueba después).'
+    );
+  } catch (error) {
+    console.error('Error en /test-sheets:', error?.response?.data || error.message || error);
+    res.status(500).send(
+      '❌ Hubo un error escribiendo en Google Sheets: ' +
+        (error?.response?.data?.error?.message || error.message || 'Error desconocido') +
+        '\n\nRevisa: 1) que GOOGLE_SHEET_ID sea correcto, 2) que GOOGLE_SERVICE_ACCOUNT_JSON esté bien pegado, 3) que compartiste la hoja con el email de la cuenta de servicio como Editor, 4) que la pestaña se llame exactamente "Facturas".'
+    );
+  }
+});
+
 const port = PORT || 3000;
 app.listen(port, () => {
   console.log(`Servidor corriendo en el puerto ${port}`);

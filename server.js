@@ -258,6 +258,45 @@ app.get('/', (req, res) => {
 });
 
 // ------------------------------------------------------------
+// Política de privacidad (requerida por Meta para publicar la app)
+// ------------------------------------------------------------
+app.get('/privacidad', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Política de Privacidad - Factura Bot</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+        h1 { font-size: 1.5em; }
+        h2 { font-size: 1.2em; margin-top: 1.5em; }
+      </style>
+    </head>
+    <body>
+      <h1>Política de Privacidad — Factura Bot</h1>
+      <p>Última actualización: ${new Date().toLocaleDateString('es-PA')}</p>
+
+      <h2>¿Qué hace este bot?</h2>
+      <p>Factura Bot es una herramienta interna de Avanza Neuropsicología que permite registrar facturas y recibos enviados por WhatsApp. Cuando un usuario envía una foto o PDF de una factura, el bot extrae automáticamente los datos (proveedor, montos, fecha, etc.) usando inteligencia artificial y los guarda en una hoja de cálculo privada de la empresa.</p>
+
+      <h2>Qué datos se procesan</h2>
+      <p>Se procesan únicamente las imágenes o PDFs de facturas que el usuario envía voluntariamente al número de WhatsApp del bot, así como el número de teléfono remitente, para fines de registro contable interno.</p>
+
+      <h2>Cómo se usan los datos</h2>
+      <p>Los datos extraídos se almacenan en una hoja de cálculo de Google privada, propiedad de Avanza Neuropsicología, y se usan exclusivamente para llevar el control interno de gastos y facturas del negocio. No se comparten con terceros ni se usan con fines publicitarios.</p>
+
+      <h2>Almacenamiento y seguridad</h2>
+      <p>Las imágenes se procesan de forma temporal para extraer los datos y no se almacenan de forma permanente en los servidores del bot. Los datos extraídos se guardan en Google Sheets, protegido con los controles de acceso estándar de Google Workspace.</p>
+
+      <h2>Contacto</h2>
+      <p>Para consultas sobre esta política de privacidad, contactar a: adming@avanzaneuropsicologia.com</p>
+    </body>
+    </html>
+  `);
+});
+
+// ------------------------------------------------------------
 // RUTA TEMPORAL DE PRUEBA
 // Visita https://TU-URL-DE-RENDER.onrender.com/test-sheets
 // en el navegador para verificar que el bot puede escribir

@@ -70,15 +70,19 @@ app.post('/webhook', async (req, res) => {
       messageType === 'image' ? message.image.id : message.document.id;
 
     await enviarMensajeWhatsApp(fromNumber, '📥 Recibido, procesando tu factura...');
+    console.log('✅ Mensaje de confirmación enviado. Descargando media...');
 
     // Paso 1: descargar el archivo desde los servidores de WhatsApp
     const { buffer, mimeType } = await descargarMedia(mediaId);
+    console.log('✅ Media descargada. Extrayendo datos con Claude...');
 
     // Paso 2: extraer los datos de la factura con Claude
     const datos = await extraerDatosFactura(buffer, mimeType);
+    console.log('✅ Datos extraídos. Guardando en Google Sheets...');
 
     // Paso 3: guardar en Google Sheets
     await guardarEnGoogleSheets(datos, fromNumber);
+    console.log('✅ Guardado en Sheets. Enviando confirmación...');
 
     // Paso 4: confirmar al usuario
     const resumen =
@@ -93,7 +97,10 @@ app.post('/webhook', async (req, res) => {
 
     await enviarMensajeWhatsApp(fromNumber, resumen);
   } catch (error) {
-    console.error('Error procesando el mensaje:', error?.response?.data || error);
+    const detalleError = error?.response?.data
+      ? JSON.stringify(error.response.data)
+      : `${error.code || ''} ${error.message || error}`;
+    console.error('Error procesando el mensaje:', detalleError);
     try {
       const fromNumber = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
       if (fromNumber) {
@@ -103,7 +110,8 @@ app.post('/webhook', async (req, res) => {
         );
       }
     } catch (e) {
-      console.error('No se pudo avisar del error al usuario:', e);
+      const detalleError2 = e?.response?.data ? JSON.stringify(e.response.data) : `${e.code || ''} ${e.message || e}`;
+      console.error('No se pudo avisar del error al usuario:', detalleError2);
     }
   }
 });

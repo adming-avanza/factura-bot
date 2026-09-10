@@ -20,6 +20,7 @@ const {
   ANTHROPIC_API_KEY,
   GOOGLE_SHEET_ID,
   GOOGLE_SERVICE_ACCOUNT_JSON,
+  TELEGRAM_BOT_TOKEN,
   PORT,
 } = process.env;
 
@@ -59,6 +60,7 @@ app.post('/webhook', async (req, res) => {
     const messageType = message.type; // 'image', 'document', 'text', etc.
 
     if (messageType !== 'image' && messageType !== 'document') {
+      console.log('📩 Mensaje de texto recibido:', JSON.stringify(message.text?.body || message));
       await enviarMensajeWhatsApp(
         fromNumber,
         'Envíame una *foto* o un *PDF* de la factura y la registro automáticamente. 📄'
@@ -296,8 +298,111 @@ app.get('/privacidad', (req, res) => {
   `);
 });
 
+// ============================================================
+// TELEGRAM (alternativa a WhatsApp, mucho más simple de configurar)
+// ============================================================
+
 // ------------------------------------------------------------
-// RUTA TEMPORAL DE PRUEBA
+// Recibe mensajes de Telegram
+// ------------------------------------------------------------
+app.post('/telegram-webhook', async (req, res) => {
+  res.sendStatus(200); // Responder rápido a Telegram
+
+  try {
+    const message = req.body.message;
+    if (!message) return;
+
+    const chatId = message.chat.id;
+    const photo = message.photo; // array de tamaños, tomamos el más grande
+    const document = message.document; // para PDFs
+
+    let fileId = null;
+    let mimeType = null;
+
+    if (photo && photo.length > 0) {
+      fileId = photo[photo.length - 1].file_id; // el de mayor resolución
+      mimeType = 'image/jpeg';
+    } else if (document) {
+      fileId = document.file_id;
+      mimeType = document.mime_type || 'application/pdf';
+    } else {
+      await enviarMensajeTelegram(
+        chatId,
+        'Envíame una *foto* o un *PDF* de la factura y la registro automáticamente. 📄'
+      );
+      return;
+    }
+
+    await enviarMensajeTelegram(chatId, '📥 Recibido, procesando tu factura...');
+    console.log('✅ Confirmación enviada (Telegram). Descargando archivo...');
+
+    const buffer = await descargarMediaTelegram(fileId);
+    console.log('✅ Archivo descargado. Extrayendo datos con Claude...');
+
+    const datos = await extraerDatosFactura(buffer, mimeType);
+    console.log('✅ Datos extraídos. Guardando en Google Sheets...');
+
+    await guardarEnGoogleSheets(datos, `telegram:${chatId}`);
+    console.log('✅ Guardado en Sheets. Enviando confirmación...');
+
+    const resumen =
+      `✅ Factura registrada:\n` +
+      `🏢 Proveedor: ${datos.proveedor}\n` +
+      `🧾 N° factura: ${datos.numero_factura}\n` +
+      `📅 Fecha: ${datos.fecha_factura}\n` +
+      `💰 Subtotal: ${datos.subtotal}\n` +
+      `📊 ITBMS: ${datos.itbms}\n` +
+      `💵 Total: ${datos.total}\n` +
+      `🏷️ Categoría: ${datos.categoria}`;
+
+    await enviarMensajeTelegram(chatId, resumen);
+  } catch (error) {
+    const detalleError = error?.response?.data
+      ? JSON.stringify(error.response.data)
+      : `${error.code || ''} ${error.message || error}`;
+    console.error('Error procesando el mensaje (Telegram):', detalleError);
+    try {
+      const chatId = req.body.message?.chat?.id;
+      if (chatId) {
+        await enviarMensajeTelegram(
+          chatId,
+          '⚠️ No pude procesar esa factura. ¿Puedes intentar con una foto más clara o el PDF original?'
+        );
+      }
+    } catch (e) {
+      console.error('No se pudo avisar del error al usuario (Telegram):', e.message);
+    }
+  }
+});
+
+// ------------------------------------------------------------
+// Descarga un archivo de Telegram usando su file_id
+// ------------------------------------------------------------
+async function descargarMediaTelegram(fileId) {
+  const infoResponse = await axios.get(
+    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getFile`,
+    { params: { file_id: fileId } }
+  );
+  const filePath = infoResponse.data.result.file_path;
+
+  const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${filePath}`;
+  const fileResponse = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+
+  return Buffer.from(fileResponse.data);
+}
+
+// ------------------------------------------------------------
+// Envía un mensaje de texto por Telegram
+// ------------------------------------------------------------
+async function enviarMensajeTelegram(chatId, texto) {
+  await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    chat_id: chatId,
+    text: texto,
+    parse_mode: 'Markdown',
+  });
+}
+
+
 // Visita https://TU-URL-DE-RENDER.onrender.com/test-sheets
 // en el navegador para verificar que el bot puede escribir
 // en tu Google Sheet, sin necesitar WhatsApp todavía.

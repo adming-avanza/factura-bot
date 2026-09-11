@@ -80,7 +80,18 @@ app.post('/webhook', async (req, res) => {
 
     // Paso 2: extraer los datos de la factura con Claude
     const datos = await extraerDatosFactura(buffer, mimeType);
-    console.log('✅ Datos extraídos. Guardando en Google Sheets...');
+    console.log('✅ Datos extraídos. Verificando si ya existe...');
+
+    const yaExiste = await esFacturaDuplicada(datos);
+    if (yaExiste) {
+      await enviarMensajeWhatsApp(
+        fromNumber,
+        `⚠️ Esta factura ya está registrada (N° ${datos.numero_factura}, ${datos.proveedor}). No la agregué de nuevo para evitar duplicados.`
+      );
+      return;
+    }
+
+    console.log('✅ No es duplicada. Guardando en Google Sheets...');
 
     // Paso 3: guardar en Google Sheets
     await guardarEnGoogleSheets(datos, fromNumber);
@@ -163,7 +174,8 @@ async function extraerDatosFactura(buffer, mimeType) {
   "categoria": "una categoría breve inferida del tipo de gasto, ej: Alimentación, Transporte, Servicios, Suministros, Oficina, Otro",
   "nombre_colaborador": "nombre de la persona que recibió el pago por un trabajo o servicio (ej: limpieza, reparación), si aparece firmando o mencionada en el recibo. Si no aparece, usa 'N/A'",
   "cedula_colaborador": "número de cédula de esa persona, si aparece escrito en la factura o recibo. Si no aparece, usa 'N/A'",
-  "propina": "monto de propina o gasto extra adicional al total, como número, si aparece por separado en la factura. Si no aparece, usa 0"
+  "propina": "monto de propina o gasto extra adicional al total, como número, si aparece por separado en la factura. Si no aparece, usa 0",
+  "cufe": "el código CUFE o número de protocolo de autorización que aparece impreso cerca del código QR en facturas electrónicas de Panamá (texto largo con números/letras). Si no aparece, usa 'N/A'"
 }`;
 
   const response = await axios.post(
@@ -205,19 +217,48 @@ function numeroLimpio(valor) {
 }
 
 // ------------------------------------------------------------
-// Agrega una fila nueva a Google Sheets con los datos extraídos
+// Crea el cliente autenticado de Google Sheets (reutilizable)
 // ------------------------------------------------------------
-async function guardarEnGoogleSheets(datos, remitente) {
+async function obtenerClienteSheets() {
   const credentials = JSON.parse(GOOGLE_SERVICE_ACCOUNT_JSON);
-
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
+  return google.sheets({ version: 'v4', auth });
+}
 
-  const sheets = google.sheets({ version: 'v4', auth });
+// ------------------------------------------------------------
+// Revisa si ya existe una factura con el mismo RUC/Cédula y
+// el mismo N° de factura, para evitar registrarla dos veces
+// ------------------------------------------------------------
+async function esFacturaDuplicada(datos) {
+  if (!datos.numero_factura || datos.numero_factura === 'N/A') return false;
 
-  await sheets.spreadsheets.values.append({
+  const sheets = await obtenerClienteSheets();
+  const respuesta = await sheets.spreadsheets.values.get({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: 'Facturas!C:D', // C: RUC/Cédula, D: N.° factura
+  });
+
+  const filas = respuesta.data.values || [];
+  const rucNuevo = String(datos.ruc_cedula || '').trim().toLowerCase();
+  const facturaNueva = String(datos.numero_factura).trim().toLowerCase();
+
+  return filas.some((fila) => {
+    const ruc = String(fila[0] || '').trim().toLowerCase();
+    const numero = String(fila[1] || '').trim().toLowerCase();
+    return ruc === rucNuevo && numero === facturaNueva;
+  });
+}
+
+// ------------------------------------------------------------
+// Agrega una fila nueva a Google Sheets con los datos extraídos
+// ------------------------------------------------------------
+async function guardarEnGoogleSheets(datos, remitente) {
+  const sheets = await obtenerClienteSheets();
+
+  const respuesta = await sheets.spreadsheets.values.append({
     spreadsheetId: GOOGLE_SHEET_ID,
     range: 'Facturas!A:Q',
     valueInputOption: 'USER_ENTERED',
@@ -243,6 +284,20 @@ async function guardarEnGoogleSheets(datos, remitente) {
           numeroLimpio(datos.propina), // Q: Propina / Gastos Extra
         ],
       ],
+    },
+  });
+
+  // Averigua en qué fila quedó la factura, para escribir el CUFE
+  // directamente en la columna X, sin tocar las columnas con fórmulas (R-W)
+  const rangoEscrito = respuesta.data.updates.updatedRange; // ej: "Facturas!A5:Q5"
+  const numeroFila = rangoEscrito.match(/(\d+)(?!.*\d)/)[0];
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: GOOGLE_SHEET_ID,
+    range: `Facturas!X${numeroFila}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: [[datos.cufe]],
     },
   });
 }
@@ -354,7 +409,18 @@ app.post('/telegram-webhook', async (req, res) => {
     console.log('✅ Archivo descargado. Extrayendo datos con Claude...');
 
     const datos = await extraerDatosFactura(buffer, mimeType);
-    console.log('✅ Datos extraídos. Guardando en Google Sheets...');
+    console.log('✅ Datos extraídos. Verificando si ya existe...');
+
+    const yaExiste = await esFacturaDuplicada(datos);
+    if (yaExiste) {
+      await enviarMensajeTelegram(
+        chatId,
+        `⚠️ Esta factura ya está registrada (N° ${datos.numero_factura}, ${datos.proveedor}). No la agregué de nuevo para evitar duplicados.`
+      );
+      return;
+    }
+
+    console.log('✅ No es duplicada. Guardando en Google Sheets...');
 
     await guardarEnGoogleSheets(datos, `telegram:${chatId}`);
     console.log('✅ Guardado en Sheets. Enviando confirmación...');

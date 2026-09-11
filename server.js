@@ -160,7 +160,10 @@ async function extraerDatosFactura(buffer, mimeType) {
   "itbms": "monto del impuesto (ITBMS/IVA) como número, o 0 si no aparece",
   "total": "monto total final como número, sin símbolo de moneda (ej: 107.00)",
   "metodo_pago": "método de pago si es visible en la factura (ej: Efectivo, Transferencia, Tarjeta, Yappy), o 'N/A' si no se indica",
-  "categoria": "una categoría breve inferida del tipo de gasto, ej: Alimentación, Transporte, Servicios, Suministros, Oficina, Otro"
+  "categoria": "una categoría breve inferida del tipo de gasto, ej: Alimentación, Transporte, Servicios, Suministros, Oficina, Otro",
+  "nombre_colaborador": "nombre de la persona que recibió el pago por un trabajo o servicio (ej: limpieza, reparación), si aparece firmando o mencionada en el recibo. Si no aparece, usa 'N/A'",
+  "cedula_colaborador": "número de cédula de esa persona, si aparece escrito en la factura o recibo. Si no aparece, usa 'N/A'",
+  "propina": "monto de propina o gasto extra adicional al total, como número, si aparece por separado en la factura. Si no aparece, usa 0"
 }`;
 
   const response = await axios.post(
@@ -208,7 +211,7 @@ async function guardarEnGoogleSheets(datos, remitente) {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: GOOGLE_SHEET_ID,
-    range: 'Facturas!A:N',
+    range: 'Facturas!A:Q',
     valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: [
@@ -227,6 +230,9 @@ async function guardarEnGoogleSheets(datos, remitente) {
           'Pendiente', // L: Estado
           'WhatsApp', // M: Archivo/WhatsApp
           `Registrado por ${remitente}`, // N: Observaciones
+          datos.nombre_colaborador, // O: Nombre Colaborador
+          datos.cedula_colaborador, // P: Cédula Colaborador
+          datos.propina, // Q: Propina / Gastos Extra
         ],
       ],
     },
@@ -345,7 +351,7 @@ app.post('/telegram-webhook', async (req, res) => {
     await guardarEnGoogleSheets(datos, `telegram:${chatId}`);
     console.log('✅ Guardado en Sheets. Enviando confirmación...');
 
-    const resumen =
+    let resumen =
       `✅ Factura registrada:\n` +
       `🏢 Proveedor: ${datos.proveedor}\n` +
       `🧾 N° factura: ${datos.numero_factura}\n` +
@@ -354,6 +360,13 @@ app.post('/telegram-webhook', async (req, res) => {
       `📊 ITBMS: ${datos.itbms}\n` +
       `💵 Total: ${datos.total}\n` +
       `🏷️ Categoría: ${datos.categoria}`;
+
+    if (datos.nombre_colaborador && datos.nombre_colaborador !== 'N/A') {
+      resumen += `\n👤 Colaborador: ${datos.nombre_colaborador} (${datos.cedula_colaborador})`;
+    }
+    if (datos.propina && Number(datos.propina) > 0) {
+      resumen += `\n💵 Propina/Extra: ${datos.propina}`;
+    }
 
     await enviarMensajeTelegram(chatId, resumen);
   } catch (error) {

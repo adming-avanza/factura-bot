@@ -197,6 +197,14 @@ async function extraerDatosFactura(buffer, mimeType) {
 }
 
 // ------------------------------------------------------------
+// Convierte un valor a número limpio (0 si no es válido)
+// ------------------------------------------------------------
+function numeroLimpio(valor) {
+  const n = parseFloat(String(valor).replace(/[^0-9.-]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+// ------------------------------------------------------------
 // Agrega una fila nueva a Google Sheets con los datos extraídos
 // ------------------------------------------------------------
 async function guardarEnGoogleSheets(datos, remitente) {
@@ -222,9 +230,9 @@ async function guardarEnGoogleSheets(datos, remitente) {
           datos.numero_factura, // D: N.° factura
           datos.fecha_factura, // E: Fecha factura
           datos.descripcion, // F: Descripción
-          datos.subtotal, // G: Subtotal
-          datos.itbms, // H: ITBMS
-          datos.total, // I: Total
+          numeroLimpio(datos.subtotal), // G: Subtotal
+          numeroLimpio(datos.itbms), // H: ITBMS
+          numeroLimpio(datos.total), // I: Total
           datos.metodo_pago, // J: Método de pago
           datos.categoria, // K: Categoría
           'Pendiente', // L: Estado
@@ -232,7 +240,7 @@ async function guardarEnGoogleSheets(datos, remitente) {
           `Registrado por ${remitente}`, // N: Observaciones
           datos.nombre_colaborador, // O: Nombre Colaborador
           datos.cedula_colaborador, // P: Cédula Colaborador
-          datos.propina, // Q: Propina / Gastos Extra
+          numeroLimpio(datos.propina), // Q: Propina / Gastos Extra
         ],
       ],
     },
